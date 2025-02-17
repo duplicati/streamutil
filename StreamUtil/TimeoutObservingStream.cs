@@ -30,10 +30,18 @@ public sealed class TimeoutObservingStream : WrappingAsyncStream
     /// The read timeout.
     /// </summary>
     private int _readTimeout = Timeout.Infinite;
+
     /// <summary>
     /// The write timeout.
     /// </summary>
     private int _writeTimeout = Timeout.Infinite;
+
+    /// <summary>
+    /// A timeout used as grace period for the other timeouts.
+    ///
+    /// Once the first transfer happens (read or write), this timeout is ignored.
+    /// </summary>
+    private int _startTimeout = Timeout.Infinite;
 
     /// <summary>
     /// The cancellation token source for the timeout.
@@ -44,10 +52,16 @@ public sealed class TimeoutObservingStream : WrappingAsyncStream
     /// The timer for the read timeout.
     /// </summary>
     private readonly Timer _readTimer;
+
     /// <summary>
     /// The timer for the write timeout.
     /// </summary>
     private readonly Timer _writeTimer;
+
+    /// <summary>
+    /// The time for the start timeout (grace period).
+    /// </summary>
+    private readonly Timer _startTimer;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="TimeoutObservingStream"/> class.
@@ -58,6 +72,7 @@ public sealed class TimeoutObservingStream : WrappingAsyncStream
     {
         _readTimer = new(_ => _timeoutCts.Cancel());
         _writeTimer = new(_ => _timeoutCts.Cancel());
+        _startTimer = new(_ => _timeoutCts.Cancel());
     }
 
     /// <summary>
@@ -95,91 +110,145 @@ public sealed class TimeoutObservingStream : WrappingAsyncStream
     }
 
     /// <summary>
-    /// Sets the timeout for both read and write operations to infinite.
+    /// Configure value for the start timeout.
     /// </summary>
-    public void CancelTimeout()
-        => WriteTimeout = ReadTimeout = Timeout.Infinite;
-
-    /// <inheritdoc/>
-    override protected async Task<int> ReadImplAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+    /// <exception cref="ArgumentOutOfRangeException"></exception>
+    public int StartTimeout
     {
-        // If the timer is disable, it is already stopped, otherwise restart it
-        if (_readTimeout != Timeout.Infinite)
-            _readTimer.Change(_readTimeout, Timeout.Infinite);
-
-        // If there is no timeout and no cancellation token, we can just call the base stream
-        if (_readTimeout == Timeout.Infinite && !cancellationToken.CanBeCanceled)
-            return await BaseStream.ReadAsync(buffer, offset, count, cancellationToken).ConfigureAwait(false);
-
-        // We need a cts here to handle cancellation when not handled by the callee, 
-        // but in case the callee *does* observe it, we also link it to the timeout cts
-        using var cts = cancellationToken.CanBeCanceled && cancellationToken != TimeoutToken
-            ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _timeoutCts.Token)
-            : null;
-
-        // Get the token to use
-        var tk = cts == null ? _timeoutCts.Token : cts.Token;
-
-        var task = BaseStream.ReadAsync(buffer, offset, count, tk);
-
-        // If the task is already completed, we can await it without a timeout
-        if (task.IsCompleted)
-            return await task.ConfigureAwait(false);
-
-        // Run the task and observe the cancellation token
-        var res = await Task.WhenAny(Task.Run(() => task, tk)).ConfigureAwait(false);
-
-        // Check if we should throw a timeout exception
-        // In case there is a race here, we prefer timeout over any other error for performance reasons
-        if (!cancellationToken.IsCancellationRequested && _timeoutCts.IsCancellationRequested)
-            throw new TimeoutException();
-
-        // Any exceptions from the task are rethrown here
-        return await res.ConfigureAwait(false);
+        get => _startTimeout;
+        set
+        {
+            if (value <= 0 && value != Timeout.Infinite)
+                throw new ArgumentOutOfRangeException(nameof(value));
+            _startTimeout = value;
+        }
     }
 
-    /// <inheritdoc/>
-    override protected async Task WriteImplAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+    /// <summary>
+    /// Sets the timeout for both read and write operations to infinite as well as startTimeout
+    /// </summary>
+    public void CancelTimeout()
+        => StartTimeout = WriteTimeout = ReadTimeout = Timeout.Infinite;
+
+    private void CancelStartTimeout()
     {
-        // If the timer is disable, it is already stopped, otherwise restart it
-        if (_writeTimeout != Timeout.Infinite)
-            _writeTimer.Change(_writeTimeout, Timeout.Infinite);
+        _hasCompletedOperation = true;
+        _startTimer.Change(Timeout.Infinite, Timeout.Infinite);
+    }
 
-        // If there is no timeout and no cancellation token, we can just call the base stream
-        if (_writeTimeout == Timeout.Infinite && !cancellationToken.CanBeCanceled)
+    private volatile bool _hasCompletedOperation;
+
+    protected override async Task<int> ReadImplAsync(byte[] buffer, int offset, int count,
+        CancellationToken cancellationToken)
+    {
+        try
         {
-            await BaseStream.WriteAsync(buffer, offset, count, cancellationToken).ConfigureAwait(false);
-            return;
+            // Start the grace period timer if this is the first operation and timeout is set
+            if (!_hasCompletedOperation && _startTimeout != Timeout.Infinite)
+                _startTimer.Change(_startTimeout, Timeout.Infinite);
+
+            // If the read timer is enabled, restart it
+            if (_readTimeout != Timeout.Infinite) _readTimer.Change(_readTimeout, Timeout.Infinite);
+
+            // If there is no timeout and no cancellation token, we can just call the base stream
+            if (_readTimeout == Timeout.Infinite &&
+                _startTimeout == Timeout.Infinite &&
+                _startTimeout == Timeout.Infinite &&
+                !cancellationToken.CanBeCanceled)
+            {
+                var readResult = await BaseStream.ReadAsync(buffer, offset, count, cancellationToken)
+                    .ConfigureAwait(false);
+                CancelStartTimeout();
+                return readResult;
+            }
+
+            // We need a cts here to handle cancellation when not handled by the callee
+            using var cts = cancellationToken.CanBeCanceled && cancellationToken != TimeoutToken
+                ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _timeoutCts.Token)
+                : null;
+
+            var tk = cts?.Token ?? _timeoutCts.Token;
+            var task = BaseStream.ReadAsync(buffer, offset, count, tk);
+
+            // If the task is already completed, we can await it without a timeout
+            if (task.IsCompleted)
+            {
+                var completedResult = await task.ConfigureAwait(false);
+                CancelStartTimeout();
+                return completedResult;
+            }
+
+            // Run the task and observe the cancellation token
+            var res = await Task.WhenAny(Task.Run(() => task, tk)).ConfigureAwait(false);
+
+            // Check if we should throw a timeout exception
+            if (!cancellationToken.IsCancellationRequested && _timeoutCts.IsCancellationRequested)
+                throw new TimeoutException();
+
+            // Any exceptions from the task are rethrown here
+            var finalResult = await res.ConfigureAwait(false);
+            CancelStartTimeout();
+            return finalResult;
         }
-
-        // We need a cts here to handle cancellation when not handled by the callee, 
-        // but in case the callee *does* observe it, we also link it to the timeout cts
-        using var cts = cancellationToken.CanBeCanceled && cancellationToken != TimeoutToken
-            ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _timeoutCts.Token)
-            : null;
-
-        // Get the token to use
-        var tk = cts == null ? _timeoutCts.Token : cts.Token;
-
-        var task = BaseStream.WriteAsync(buffer, offset, count, tk);
-
-        // If the task is already completed, we can await it without a timeout
-        if (task.IsCompleted)
+        catch (OperationCanceledException exception)
         {
-            await task.ConfigureAwait(false);
-            return;
-        }
-
-        // Run the task and observe the cancellation token
-        var res = await Task.WhenAny(Task.Run(() => task, tk)).ConfigureAwait(false);
-
-        // Check if we should throw a timeout exception
-        // In case there is a race here, we prefer timeout over any other error for performance reasons
-        if (!cancellationToken.IsCancellationRequested && _timeoutCts.IsCancellationRequested)
             throw new TimeoutException();
+        }
+    }
 
-        // Any exceptions from the task are rethrown here
-        await task.ConfigureAwait(false);
+    protected override async Task WriteImplAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Start the grace period timer if this is the first operation and timeout is set
+            if (!_hasCompletedOperation && _startTimeout != Timeout.Infinite) _startTimer.Change(_startTimeout, Timeout.Infinite);
+
+            // If the write timer is enabled, restart it
+            if (_writeTimeout != Timeout.Infinite) _writeTimer.Change(_writeTimeout, Timeout.Infinite);
+
+            // If there is no timeout and no cancellation token, we can just call the base stream
+            if (_writeTimeout == Timeout.Infinite &&
+                _startTimeout == Timeout.Infinite &&
+                _startTimeout == Timeout.Infinite &&
+                !cancellationToken.CanBeCanceled)
+            {
+                await BaseStream.WriteAsync(buffer, offset, count, cancellationToken)
+                    .ConfigureAwait(false);
+                CancelStartTimeout();
+                return;
+            }
+
+            // We need a cts here to handle cancellation when not handled by the callee
+            using var cts = cancellationToken.CanBeCanceled && cancellationToken != TimeoutToken
+                ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _timeoutCts.Token)
+                : null;
+
+            var tk = cts?.Token ?? _timeoutCts.Token;
+            var task = BaseStream.WriteAsync(buffer, offset, count, tk);
+
+            // If the task is already completed, we can await it without a timeout
+            if (task.IsCompleted)
+            {
+                await task.ConfigureAwait(false);
+                CancelStartTimeout();
+                return;
+            }
+
+            // Run the task and observe the cancellation token
+            var res = await Task.WhenAny(Task.Run(() => task, tk)).ConfigureAwait(false);
+
+            // Check if we should throw a timeout exception
+            if (!cancellationToken.IsCancellationRequested && _timeoutCts.IsCancellationRequested)
+                throw new TimeoutException();
+
+            // Any exceptions from the task are rethrown here
+            await res.ConfigureAwait(false);
+            CancelStartTimeout();
+        }
+        catch (OperationCanceledException exception)
+        {
+            throw new TimeoutException();
+        }
     }
 
     /// <inheritdoc/>
@@ -190,6 +259,7 @@ public sealed class TimeoutObservingStream : WrappingAsyncStream
             _readTimer.Dispose();
             _writeTimer.Dispose();
             _timeoutCts.Dispose();
+            _startTimer.Dispose();
         }
 
         base.Dispose(disposing);
