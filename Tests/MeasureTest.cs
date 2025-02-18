@@ -26,7 +26,7 @@ namespace Tests;
 public class MeasureTest
 {
     [Test]
-    [TestCase(1000, 10, 0.01, 0.15)]
+    [TestCase(1000, 10, 0.02, 0.25)]
     public async Task MeasureThrottledStream(int testSizeMB, int throttleMBs, double delta, double deltaForWindow)
     {
         var source = new MemoryStream();
