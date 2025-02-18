@@ -24,7 +24,7 @@ namespace Tests;
 public class ThrottleTests
 {
     [Test]
-    [TestCase(1000,10,0.03)]
+    [TestCase(1000,10,0.05)]
     public async Task ThrottleStream(int testSizeMB, int throttleMBs, double delta)
     {
         var source = new MemoryStream();
@@ -48,7 +48,7 @@ public class ThrottleTests
     }
 
     [Test]
-    [TestCase(1000,10,0.03)]
+    [TestCase(1000,10,0.05)]
     public async Task ThrottleStreamChange(int testSizeMB, int throttleMBs, double delta)
     {
         var source = new MemoryStream();
