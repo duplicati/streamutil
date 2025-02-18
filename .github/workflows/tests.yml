@@ -1,0 +1,33 @@
+name: Tests
+
+on: [pull_request, workflow_dispatch]
+
+jobs:
+  unit_tests:
+    name: Unit tests
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.x
+
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Restore NuGet dependencies
+        run: dotnet restore StreamUtil.sln
+
+      - name: Build StreamUtil
+        run: dotnet build --no-restore StreamUtil.sln
+
+      - name: Run unit tests
+        run: dotnet test --no-build --verbosity minimal StreamUtil.sln
+
+      - name: Run test project
+        run: dotnet run --project QuickTest/QuickTest.csproj
