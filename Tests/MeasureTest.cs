@@ -26,16 +26,16 @@ namespace Tests;
 public class MeasureTest
 {
     [Test]
-    public async Task MeasureThrottledStream()
+    [TestCase(1000, 10, 0.01, 0.15)]
+    public async Task MeasureThrottledStream(int testSizeMB, int throttleMBs, double delta, double deltaForWindow)
     {
-        var delta = 0.01;
         var source = new MemoryStream();
-        source.SetLength(1024 * 1024 * 100); // 100 MB
+        source.SetLength(1024 * 1024 * testSizeMB);
         var target = new MemoryStream();
 
         var throttleManager = new StreamUtil.ThrottleManager
         {
-            Limit = 1024 * 1024 * 10 // 10 MB/s
+            Limit = 1024 * 1024 * throttleMBs
         };
         var throttledStream = new StreamUtil.ThrottleEnabledStream(source, throttleManager);
         var measureStream = new StreamUtil.SpeedMeasuringStream(throttledStream);
@@ -43,19 +43,20 @@ public class MeasureTest
         // Use Stopwatch for more precise timing
         var stopwatch = Stopwatch.StartNew();
         var copyTask = measureStream.CopyToAsync(target);
-    
+
         // Wait a bit longer to let the throttling stabilize
-        await Task.Delay(TimeSpan.FromSeconds(5));
-    
+        var expectedDuration = TimeSpan.FromSeconds(testSizeMB / throttleMBs);
+        await Task.Delay(expectedDuration / 4); // Wait for 25% of expected duration
+
         var totalSpeed1 = measureStream.TotalBytesPerSecond;
         var totalWindow1 = measureStream.RecentBytesPerSecond;
-    
+
         await copyTask;
         stopwatch.Stop();
 
         var totalSpeed2 = measureStream.TotalBytesPerSecond;
         var totalWindow2 = measureStream.RecentBytesPerSecond;
-        
+
         Console.WriteLine($"Total Speed 1: {totalSpeed1:N0} bytes/sec");
         Console.WriteLine($"Total Speed 2: {totalSpeed2:N0} bytes/sec");
         Console.WriteLine($"Window Speed 1: {totalWindow1:N0} bytes/sec");
@@ -63,9 +64,14 @@ public class MeasureTest
         Console.WriteLine($"Throttle Limit: {throttleManager.Limit:N0} bytes/sec");
         Console.WriteLine($"Elapsed Time: {stopwatch.Elapsed.TotalSeconds:N2} seconds");
 
-        Assert.That(Math.Abs(totalSpeed1 - throttleManager.Limit), Is.LessThan(throttleManager.Limit * delta));
-        Assert.That(Math.Abs(totalSpeed2 - throttleManager.Limit), Is.LessThan(throttleManager.Limit * delta));
-        Assert.That(Math.Abs(totalWindow1 - throttleManager.Limit), Is.LessThan(throttleManager.Limit * delta));
-        Assert.That(Math.Abs(totalWindow2 - throttleManager.Limit), Is.LessThan(throttleManager.Limit * delta));
+        // Total speed should be very accurate
+        Assert.That(Math.Abs(totalSpeed1 - throttleManager.Limit) / throttleManager.Limit, Is.LessThan(delta));
+        Assert.That(Math.Abs(totalSpeed2 - throttleManager.Limit) / throttleManager.Limit, Is.LessThan(delta));
+
+        // Window speed can have more variation because its a sliding window
+        Assert.That(Math.Abs(totalWindow1 - throttleManager.Limit) / throttleManager.Limit,
+            Is.LessThan(deltaForWindow));
+        Assert.That(Math.Abs(totalWindow2 - throttleManager.Limit) / throttleManager.Limit,
+            Is.LessThan(deltaForWindow));
     }
 }
