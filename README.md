@@ -1,6 +1,6 @@
 # Stream utility
 
-This repository contains stream wrappers that add functionality to the .NET base streams.
+Stream wrappers that add functionality to the .NET base streams.
 
 ## Helpers: `WrappingStream` and `WrappingAsyncStream`
 

@@ -20,7 +20,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 
-namespace StreamUtil;
+namespace Duplicati.StreamUtil;
 
 /// <summary>
 /// Wraps a <see cref="Stream"/> and delegates all calls to it.

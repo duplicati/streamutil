@@ -19,7 +19,7 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
 // DEALINGS IN THE SOFTWARE.
 
-namespace StreamUtil;
+namespace Duplicati.StreamUtil;
 
 /// <summary>
 /// Class that wraps a stream and allows for intercepting read and write operations.

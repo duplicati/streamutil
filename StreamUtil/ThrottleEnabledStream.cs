@@ -19,7 +19,7 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
 // DEALINGS IN THE SOFTWARE.
 
-namespace StreamUtil;
+namespace Duplicati.StreamUtil;
 
 /// <summary>
 /// A stream that wraps another stream and throttles read and write operations.
