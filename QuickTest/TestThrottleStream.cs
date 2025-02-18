@@ -26,12 +26,12 @@ public static class TestThrottleStream
     public static async Task Run()
     {
         var source = new MemoryStream();
-        source.SetLength(1024 * 1024 * 1000);
+        source.SetLength(1024 * 1024 * 100);
         var target = new MemoryStream();
 
         var throttleManager = new StreamUtil.ThrottleManager
         {
-            Limit = 1024 * 1024 * 10 // 100 MB/s
+            Limit = 1024 * 1024 * 10 // 10 MB/s
         };
         var throttledStream = new StreamUtil.ThrottleEnabledStream(source, throttleManager);
 
@@ -43,5 +43,7 @@ public static class TestThrottleStream
             Console.WriteLine($"Speed: {speed / 1024 / 1024:F2} MB/s - {elapsed}");
         else
             Console.WriteLine($"Speed: {speed / 1024:F2} KB/s - {elapsed}");
+        
+        Console.WriteLine($"Expected: {throttleManager.Limit / 1024 /1024} MB/s");
     }
 }
