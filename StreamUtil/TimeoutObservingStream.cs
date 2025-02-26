@@ -138,6 +138,7 @@ public sealed class TimeoutObservingStream : WrappingAsyncStream
 
     private volatile bool _hasCompletedOperation;
 
+    /// <inheritdoc/>
     protected override async Task<int> ReadImplAsync(byte[] buffer, int offset, int count,
         CancellationToken cancellationToken)
     {
@@ -190,12 +191,13 @@ public sealed class TimeoutObservingStream : WrappingAsyncStream
             CancelStartTimeout();
             return finalResult;
         }
-        catch (OperationCanceledException exception)
+        catch (OperationCanceledException)
         {
             throw new TimeoutException();
         }
     }
 
+    /// <inheritdoc/>
     protected override async Task WriteImplAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
     {
         try
@@ -245,7 +247,7 @@ public sealed class TimeoutObservingStream : WrappingAsyncStream
             await res.ConfigureAwait(false);
             CancelStartTimeout();
         }
-        catch (OperationCanceledException exception)
+        catch (OperationCanceledException)
         {
             throw new TimeoutException();
         }
