@@ -1,4 +1,4 @@
-// Copyright (C) 2024, The Duplicati Team
+// Copyright (C) 2025, The Duplicati Team
 // https://duplicati.com, hello@duplicati.com
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a 
@@ -43,7 +43,7 @@ public static class TestThrottleStream
             Console.WriteLine($"Speed: {speed / 1024 / 1024:F2} MB/s - {elapsed}");
         else
             Console.WriteLine($"Speed: {speed / 1024:F2} KB/s - {elapsed}");
-        
-        Console.WriteLine($"Expected: {throttleManager.Limit / 1024 /1024} MB/s");
+
+        Console.WriteLine($"Expected: {throttleManager.Limit / 1024 / 1024} MB/s");
     }
 }

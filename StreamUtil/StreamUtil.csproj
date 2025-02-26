@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
@@ -12,7 +12,7 @@
     <PackageId>Duplicati.StreamUtil</PackageId>
     <Version>1.0.0</Version>
 
-    <Copyright>Copyright 2024, Duplicati Inc</Copyright>
+    <Copyright>Copyright 2025, Duplicati Inc</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/duplicati/streamutil</RepositoryUrl>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>

@@ -1,4 +1,4 @@
-// Copyright (C) 2024, The Duplicati Team
+// Copyright (C) 2025, The Duplicati Team
 // https://duplicati.com, hello@duplicati.com
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a 
@@ -254,7 +254,7 @@ public class TimeoutTests
 
 
     [Test]
-    [TestCase(1000*60)]
+    [TestCase(1000 * 60)]
     public async Task StartTimeoutInfiniteShouldNeverTimeout(int startDelayMilliseconds)
     {
         var pipe = new Pipe();

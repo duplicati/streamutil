@@ -1,4 +1,4 @@
-// Copyright (C) 2024, The Duplicati Team
+// Copyright (C) 2025, The Duplicati Team
 // https://duplicati.com, hello@duplicati.com
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a 
@@ -26,7 +26,7 @@ namespace Tests;
 public class ThrottleTests
 {
     [Test]
-    [TestCase(1000,10,0.05)]
+    [TestCase(1000, 10, 0.05)]
     public async Task ThrottleStream(int testSizeMB, int throttleMBs, double delta)
     {
         var source = new MemoryStream();
@@ -50,7 +50,7 @@ public class ThrottleTests
     }
 
     [Test]
-    [TestCase(1000,10,0.05)]
+    [TestCase(1000, 10, 0.05)]
     public async Task ThrottleStreamChange(int testSizeMB, int throttleMBs, double delta)
     {
         var source = new MemoryStream();
@@ -70,7 +70,7 @@ public class ThrottleTests
 
         // Change throttle limit halfway through
         await Task.Delay((int)(targetTime1.TotalMilliseconds / 2));
-        throttleManager.Limit = 1024 * 1024 * throttleMBs * 2; 
+        throttleManager.Limit = 1024 * 1024 * throttleMBs * 2;
 
         await copyTask;
         var elapsed = DateTime.Now - start;
