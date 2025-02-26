@@ -19,9 +19,7 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
 // DEALINGS IN THE SOFTWARE.
 
-using Duplicati.StreamUtil;
-
-namespace QuickTest;
+namespace Duplicati.StreamUtil.QuickTest;
 
 public static class TestThrottleStream
 {

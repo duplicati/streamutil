@@ -127,7 +127,10 @@ public class TimeoutTests
         var writer = WriteAll(wrapper, bytes);
         var reader = ReadPauseRead(input, bytes / 2, TimeSpan.FromSeconds(timeoutSeconds + 0.5), bytes / 2);
 
-        try { await writer; }
+        try
+        {
+            await writer;
+        }
         catch (TimeoutException)
         {
             // Expected
@@ -175,6 +178,7 @@ public class TimeoutTests
             if (read == 0 || readCount <= 0)
                 break;
         }
+
         return total;
     }
 
@@ -186,5 +190,174 @@ public class TimeoutTests
         count += await RepeatRead(source, buffer, bytesAfter);
 
         return count;
+    }
+
+    [Test]
+    [TestCase(5000, 2000)]
+    [TestCase(1000, 600)]
+    [TestCase(2000, 10)]
+    public async Task StartTimeoutShouldAllowFirstOperationWithinTimeout(int startTimeoutMilliseconds,
+        int startDelayMilliseconds)
+    {
+        var pipe = new Pipe();
+        var output = pipe.Writer.AsStream();
+        var input = pipe.Reader.AsStream();
+
+        var bytes = 1024 * 1024 * 2;
+
+        var slowStream = new SlowStartingStream(input, TimeSpan.FromMilliseconds(startDelayMilliseconds));
+
+        var wrapper = new TimeoutObservingStream(slowStream)
+        {
+            StartTimeout = (int)TimeSpan.FromMilliseconds(startTimeoutMilliseconds).TotalMilliseconds
+        };
+
+        var writer = WriteAll(output, bytes);
+        var result = await ReadChunk(wrapper, bytes);
+    }
+
+
+    [Test]
+    [TestCase(5000, 6000)]
+    [TestCase(1000, 1600)]
+    [TestCase(2000, 3010)]
+    public async Task StartTimeoutShouldAllowFirstOperationWithinTimeoutShouldThrow(int startTimeoutMilliseconds,
+        int startDelayMilliseconds)
+    {
+        var pipe = new Pipe();
+        var output = pipe.Writer.AsStream();
+        var input = pipe.Reader.AsStream();
+
+        var bytes = 1024 * 1024 * 2;
+
+        var slowStream = new SlowStartingStream(input, TimeSpan.FromMilliseconds(startDelayMilliseconds));
+
+        var wrapper = new TimeoutObservingStream(slowStream)
+        {
+            StartTimeout = (int)TimeSpan.FromMilliseconds(startTimeoutMilliseconds).TotalMilliseconds
+        };
+
+        var writer = WriteAll(output, bytes);
+
+        try
+        {
+            var result = await ReadChunk(wrapper, bytes);
+        }
+        catch (TimeoutException)
+        {
+            // Expected
+            return;
+        }
+
+        Assert.Fail("TimeoutException not thrown");
+    }
+
+
+    [Test]
+    [TestCase(1000*60)]
+    public async Task StartTimeoutInfiniteShouldNeverTimeout(int startDelayMilliseconds)
+    {
+        var pipe = new Pipe();
+        var output = pipe.Writer.AsStream();
+        var input = pipe.Reader.AsStream();
+
+        var bytes = 1024 * 1024 * 2;
+
+        var slowStream = new SlowStartingStream(input, TimeSpan.FromMilliseconds(startDelayMilliseconds));
+
+        var wrapper = new TimeoutObservingStream(slowStream)
+        {
+            StartTimeout = Timeout.Infinite
+        };
+
+        var writer = WriteAll(output, bytes);
+
+        try
+        {
+            var result = await ReadChunk(wrapper, bytes);
+        }
+        catch (TimeoutException)
+        {
+            Assert.Fail("TimeoutException was thrown, should not have timed out");
+        }
+    }
+
+    private static async Task<int> ReadChunk(Stream stream, int bytes)
+    {
+        var buffer = new byte[1024 * 8];
+        int totalRead = 0;
+
+        while (totalRead < bytes)
+        {
+            var toRead = Math.Min(buffer.Length, bytes - totalRead);
+            var read = await stream.ReadAsync(buffer.AsMemory(0, toRead));
+            if (read == 0) break;
+            totalRead += read;
+        }
+
+        return totalRead;
+    }
+
+
+    /// <summary>
+    /// A stream that wraps another stream and throttles read and write operations.
+    /// </summary>
+    private sealed class SlowStartingStream(Stream stream, TimeSpan startDelay) : WrappingStream(stream)
+    {
+        private bool _delayed = false;
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            if (!_delayed)
+            {
+                Console.WriteLine(DateTime.Now.ToString("mm:ss ffff") +
+                                  $"non async delaying {startDelay.Milliseconds} ms");
+                Task.Delay(startDelay);
+                _delayed = true;
+            }
+
+            return BaseStream.Read(buffer, offset, count);
+        }
+
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            if (!_delayed)
+            {
+                Console.WriteLine(DateTime.Now.ToString("mm:ss ffff") +
+                                  $"non async delaying {startDelay.Milliseconds} ms");
+                Task.Delay(startDelay);
+                _delayed = true;
+            }
+
+            BaseStream.Write(buffer, offset, count);
+        }
+
+        public override async Task<int> ReadAsync(byte[] buffer, int offset, int count,
+            CancellationToken cancellationToken)
+        {
+            if (!_delayed)
+            {
+                Console.WriteLine(DateTime.Now.ToString("mm:ss ffff") + $"delaying {startDelay.Milliseconds} ms");
+                await Task.Delay(startDelay, cancellationToken);
+                _delayed = true;
+            }
+
+            Console.WriteLine(DateTime.Now.ToString("mm:ss ffff") + " reading..");
+            int read = await BaseStream.ReadAsync(buffer, offset, count, cancellationToken);
+            Console.WriteLine(DateTime.Now.ToString("mm:ss ffff") + $" reading done with {read} bytes..");
+            return read;
+        }
+
+        public override async Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+        {
+            if (!_delayed)
+            {
+                Console.WriteLine(DateTime.Now.ToString("mm:ss ffff") + $"delaying {startDelay.Milliseconds} ms");
+                await Task.Delay(startDelay, cancellationToken);
+                _delayed = true;
+            }
+
+            await BaseStream.WriteAsync(buffer, offset, count, cancellationToken);
+        }
     }
 }

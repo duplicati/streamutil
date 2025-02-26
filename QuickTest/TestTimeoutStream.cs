@@ -20,7 +20,6 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System.Net;
-using Duplicati.StreamUtil;
 
 namespace Duplicati.StreamUtil.QuickTest;
 
