@@ -35,7 +35,17 @@ public class SpeedMeasuringStream : WrappingStream
     /// </summary>
     /// <param name="baseStream">The stream to wrap.</param>
     public SpeedMeasuringStream(Stream baseStream)
-        : base(baseStream)
+        : this(baseStream, true)
+    {
+    }
+
+    /// <summary>
+    /// Creates a new SpeedReportingStream.
+    /// </summary>
+    /// <param name="baseStream">The stream to wrap.</param>
+    /// <param name="disposeBaseStream">Whether to dispose the base stream when this stream is disposed.</param>
+    public SpeedMeasuringStream(Stream baseStream, bool disposeBaseStream)
+        : base(baseStream, disposeBaseStream)
     {
     }
 

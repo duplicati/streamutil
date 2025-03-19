@@ -10,7 +10,7 @@
 
   <PropertyGroup>
     <PackageId>Duplicati.StreamUtil</PackageId>
-    <Version>1.0.1</Version>
+    <Version>1.0.2</Version>
 
     <Copyright>Copyright 2025, Duplicati Inc</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
@@ -19,7 +19,7 @@
     <PackageDescription>A C# library with stream helpers</PackageDescription>
     <Authors>Dupllicati Inc</Authors>
     <PackageTags>StreamWrapper StreamUtil TimeoutStream</PackageTags>
-    <PackageReleaseNotes>Added startup timeout</PackageReleaseNotes>
+    <PackageReleaseNotes>Added option to prevent disposing base stream</PackageReleaseNotes>
     <PackageReadmeFile>docs\README.md</PackageReadmeFile>    
   </PropertyGroup>
 

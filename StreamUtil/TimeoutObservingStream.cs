@@ -68,7 +68,15 @@ public sealed class TimeoutObservingStream : WrappingAsyncStream
     /// </summary>
     /// <param name="stream">The stream to wrap.</param>
     public TimeoutObservingStream(Stream stream)
-        : base(stream)
+        : this(stream, true) { }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="TimeoutObservingStream"/> class.
+    /// </summary>
+    /// <param name="stream">The stream to wrap.</param>
+    /// <param name="disposeBaseStream">Whether to dispose the base stream when this stream is disposed.</param>
+    public TimeoutObservingStream(Stream stream, bool disposeBaseStream)
+        : base(stream, disposeBaseStream)
     {
         _readTimer = new(_ => _timeoutCts.Cancel());
         _writeTimer = new(_ => _timeoutCts.Cancel());

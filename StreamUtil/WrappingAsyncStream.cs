@@ -32,7 +32,15 @@ public abstract class WrappingAsyncStream : WrappingStream
     /// </summary>
     /// <param name="stream">The stream to wrap.</param>
     public WrappingAsyncStream(Stream stream)
-        : base(stream) { }
+        : this(stream, true) { }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="WrappingAsyncStream"/> class.
+    /// </summary>
+    /// <param name="stream">The stream to wrap.</param>
+    /// <param name="disposeBaseStream">Whether to dispose the base stream when this stream is disposed.</param>
+    public WrappingAsyncStream(Stream stream, bool disposeBaseStream)
+        : base(stream, disposeBaseStream) { }
 
     /// <inheritdoc/>
     public override int Read(byte[] buffer, int offset, int count)

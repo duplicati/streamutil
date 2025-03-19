@@ -31,7 +31,20 @@ public class LambdaInterceptStream : WrappingStream
     /// Initializes a new instance of the <see cref="LambdaInterceptStream"/> class.
     /// </summary>
     /// <param name="baseStream">The stream to wrap.</param>
-    public LambdaInterceptStream(Stream baseStream) : base(baseStream) { }
+    public LambdaInterceptStream(Stream baseStream)
+        : this(baseStream, true)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="LambdaInterceptStream"/> class.
+    /// </summary>
+    /// <param name="baseStream">The stream to wrap.</param>
+    /// <param name="disposeBaseStream">Whether to dispose the base stream when this stream is disposed.</param>
+    public LambdaInterceptStream(Stream baseStream, bool disposeBaseStream)
+        : base(baseStream, disposeBaseStream)
+    {
+    }
 
     /// <summary>
     /// The action to perform before a read operation.

@@ -33,12 +33,28 @@ public abstract class WrappingStream : Stream
     public Stream BaseStream { get; init; }
 
     /// <summary>
+    /// Gets or sets a value indicating whether the base stream should be disposed when this stream is disposed.
+    /// </summary>
+    public bool DisposeBaseStream { get; set; }
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="WrappingStream"/> class.
     /// </summary>
     /// <param name="stream">The stream to wrap.</param>
     protected WrappingStream(Stream stream)
+        : this(stream, true)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="WrappingStream"/> class.
+    /// </summary>
+    /// <param name="stream">The stream to wrap.</param>
+    /// <param name="disposeBaseStream">Whether to dispose the base stream when this stream is disposed.</param>
+    protected WrappingStream(Stream stream, bool disposeBaseStream)
     {
         BaseStream = stream;
+        DisposeBaseStream = disposeBaseStream;
     }
 
     /// <inheritdoc/>
@@ -68,7 +84,7 @@ public abstract class WrappingStream : Stream
     /// <inheritdoc/>
     protected override void Dispose(bool disposing)
     {
-        if (disposing)
+        if (disposing && DisposeBaseStream)
             BaseStream.Dispose();
     }
 
