@@ -81,4 +81,44 @@ public class ThrottleTests
         if (Math.Abs((elapsed - targetTime).TotalSeconds) > targetTime.TotalSeconds * delta)
             Assert.Fail($"Elapsed time {elapsed} is not within {delta * 100}% of target time {targetTime}");
     }
+
+    [Test]
+    [TestCase(500, 10, 0.05)]
+    public async Task ThrottleTwoStreams_FairBandwidth(int testSizeMB, int throttleMBs, double delta)
+    {
+        var throttleManager = new ThrottleManager
+        {
+            Limit = 1024 * 1024 * throttleMBs
+        };
+
+        var source1 = new MemoryStream();
+        var target1 = new MemoryStream();
+        source1.SetLength(1024 * 1024 * testSizeMB / 2);
+
+        var source2 = new MemoryStream();
+        var target2 = new MemoryStream();
+        source2.SetLength(1024 * 1024 * testSizeMB / 2);
+
+        var throttledStream1 = new ThrottleEnabledStream(source1, throttleManager);
+        var throttledStream2 = new ThrottleEnabledStream(source2, throttleManager);
+
+        var start1 = DateTime.UtcNow;
+        var start2 = DateTime.UtcNow;
+
+        await Task.WhenAll(
+            throttledStream1.CopyToAsync(target1),
+            throttledStream2.CopyToAsync(target2)
+        );
+
+        var elapsed1 = DateTime.UtcNow - start1;
+        var elapsed2 = DateTime.UtcNow - start2;
+
+        var targetTimeSeconds = (source1.Length / (throttleManager.Limit / 2)); // Each stream gets half bandwidth
+
+        Assert.That(Math.Abs(elapsed1.TotalSeconds - targetTimeSeconds) <= targetTimeSeconds * delta,
+            $"Stream1 elapsed {elapsed1}, target {TimeSpan.FromSeconds(targetTimeSeconds)}");
+
+        Assert.That(Math.Abs(elapsed2.TotalSeconds - targetTimeSeconds) <= targetTimeSeconds * delta,
+            $"Stream2 elapsed {elapsed2}, target {TimeSpan.FromSeconds(targetTimeSeconds)}");
+    }
 }
