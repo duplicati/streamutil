@@ -44,15 +44,19 @@ public abstract class WrappingAsyncStream : WrappingStream
 
     /// <inheritdoc/>
     public override int Read(byte[] buffer, int offset, int count)
-    {
-        return ReadImplAsync(buffer, offset, count, default).ConfigureAwait(false).GetAwaiter().GetResult();
-    }
+        => ReadImplAsync(buffer, offset, count, default).ConfigureAwait(false).GetAwaiter().GetResult();
 
     /// <inheritdoc/>
     public override void Write(byte[] buffer, int offset, int count)
-    {
-        WriteImplAsync(buffer, offset, count, default).ConfigureAwait(false).GetAwaiter().GetResult();
-    }
+        => WriteImplAsync(buffer, offset, count, default).ConfigureAwait(false).GetAwaiter().GetResult();
+
+    /// <inheritdoc/>
+    public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+        => ReadImplAsync(buffer, offset, count, cancellationToken);
+
+    /// <inheritdoc/>
+    public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+        => WriteImplAsync(buffer, offset, count, cancellationToken);
 
     /// <summary>
     /// Reads a sequence of bytes from the current stream and advances the position within the stream by the number of bytes read.
