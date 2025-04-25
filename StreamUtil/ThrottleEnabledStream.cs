@@ -37,6 +37,15 @@ public sealed class ThrottleEnabledStream : WrappingStream
     public ThrottleManager WriteThrottleManager { get; }
 
     /// <summary>
+    /// The transfer ID for the read operation.
+    /// </summary>
+    private readonly long readThrottleManagerTransferId;
+    /// <summary>
+    /// The transfer ID for the write operation.
+    /// </summary>
+    private readonly long writeThrottleManagerTransferId;
+
+    /// <summary>
     /// Creates a new ThrottleEnabledStream.
     /// </summary>
     /// <param name="baseStream">The stream to wrap.</param>
@@ -45,6 +54,8 @@ public sealed class ThrottleEnabledStream : WrappingStream
     public ThrottleEnabledStream(Stream baseStream, ThrottleManager readThrottleManager, ThrottleManager writeThrottleManager)
         : base(baseStream)
     {
+        readThrottleManagerTransferId = readThrottleManager.RegisterTransfer();
+        writeThrottleManagerTransferId = writeThrottleManager.RegisterTransfer();
         ReadThrottleManager = readThrottleManager;
         WriteThrottleManager = writeThrottleManager;
     }
@@ -70,7 +81,7 @@ public sealed class ThrottleEnabledStream : WrappingStream
     public override int Read(byte[] buffer, int offset, int count)
     {
         int bytesRead = BaseStream.Read(buffer, offset, count);
-        ReadThrottleManager.SleepForSize(bytesRead);
+        ReadThrottleManager.SleepForSize(readThrottleManagerTransferId, bytesRead);
         return bytesRead;
     }
 
@@ -78,7 +89,7 @@ public sealed class ThrottleEnabledStream : WrappingStream
     public override void Write(byte[] buffer, int offset, int count)
     {
         BaseStream.Write(buffer, offset, count);
-        WriteThrottleManager.SleepForSize(count);
+        WriteThrottleManager.SleepForSize(writeThrottleManagerTransferId, count);
 
     }
 
@@ -86,7 +97,7 @@ public sealed class ThrottleEnabledStream : WrappingStream
     public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
     {
         int bytesRead = await BaseStream.ReadAsync(buffer, offset, count, cancellationToken);
-        await ReadThrottleManager.WaitForSize(bytesRead, cancellationToken);
+        await ReadThrottleManager.WaitForSize(readThrottleManagerTransferId, bytesRead, cancellationToken);
         return bytesRead;
     }
 
@@ -94,6 +105,14 @@ public sealed class ThrottleEnabledStream : WrappingStream
     public override async Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
     {
         await BaseStream.WriteAsync(buffer, offset, count, cancellationToken);
-        await WriteThrottleManager.WaitForSize(count, cancellationToken);
+        await WriteThrottleManager.WaitForSize(writeThrottleManagerTransferId, count, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    protected override void Dispose(bool disposing)
+    {
+        ReadThrottleManager.UnregisterTransfer(readThrottleManagerTransferId);
+        WriteThrottleManager.UnregisterTransfer(writeThrottleManagerTransferId);
+        base.Dispose(disposing);
     }
 }
