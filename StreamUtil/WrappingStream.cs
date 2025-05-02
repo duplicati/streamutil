@@ -89,12 +89,21 @@ public abstract class WrappingStream : Stream
     }
 
     /// <inheritdoc/>
-    public override ValueTask DisposeAsync()
-        => BaseStream.DisposeAsync();
+    public override async ValueTask DisposeAsync()
+    {
+        if (DisposeBaseStream)
+            await BaseStream.DisposeAsync();
+
+        // Also dispose self if needed
+        await base.DisposeAsync();
+    }
 
     /// <inheritdoc/>
     public override void Close()
-        => BaseStream.Close();
+    {
+        Dispose(true);
+        BaseStream.Close();
+    }
 
     /// <inheritdoc/>
     public override Task FlushAsync(CancellationToken cancellationToken)
