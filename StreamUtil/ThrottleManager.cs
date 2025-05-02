@@ -204,11 +204,13 @@ public sealed class ThrottleManager : IDisposable
                 return TimeSpan.Zero;
 
             // Update active stats and compute total usage
+            var reset = false;
             requester.LastActive = now;
             if (requester.ActivityStopwatch.Elapsed > ResetInterval)
             {
                 requester.BytesTransferred = 0;
                 requester.ActivityStopwatch.Restart();
+                reset = true;
             }
 
             var weight = requester.BytesTransferred;
@@ -223,6 +225,9 @@ public sealed class ThrottleManager : IDisposable
             {
                 totalWeight = 1;
                 weight = 1;
+                // From a clean state, there are no tokens available
+                if (!reset)
+                    _availableTokens = Math.Min(_availableTokens, 0);
             }
 
             var fairShare = _availableTokens * (weight / (double)totalWeight);
