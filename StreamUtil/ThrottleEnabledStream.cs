@@ -77,10 +77,28 @@ public sealed class ThrottleEnabledStream : WrappingStream
     public ThrottleEnabledStream(Stream baseStream, int readThrottle, int writeThrottle)
         : this(baseStream, new ThrottleManager() { Limit = readThrottle }, new ThrottleManager() { Limit = writeThrottle }) { }
 
+    /// <summary>
+    /// Calculates the chunk size for throttling based on the limit and count.
+    /// </summary>
+    /// <param name="limit">The throttle limit in bytes/s.</param>
+    /// <param name="count">The number of bytes to read or write.</param>
+    /// <returns>>The chunk size in bytes.</returns>
+    private static int GetChunkSize(long limit, int count)
+    {
+        if (limit <= 100) // Avoid very small limits
+            limit = int.MaxValue;
+        else
+            limit /= 10; // Limit is in bytes/s, and we use 100ms chunks
+
+        return (int)Math.Min(count, limit);
+    }
+
     /// <inheritdoc />
     public override int Read(byte[] buffer, int offset, int count)
     {
-        int bytesRead = BaseStream.Read(buffer, offset, count);
+        var chunkSize = GetChunkSize(ReadThrottleManager.Limit, count);
+        var bytesToRead = Math.Min(chunkSize, count);
+        var bytesRead = BaseStream.Read(buffer, offset, bytesToRead);
         ReadThrottleManager.SleepForSize(readThrottleManagerTransferId, bytesRead);
         return bytesRead;
     }
@@ -88,15 +106,23 @@ public sealed class ThrottleEnabledStream : WrappingStream
     /// <inheritdoc />
     public override void Write(byte[] buffer, int offset, int count)
     {
-        BaseStream.Write(buffer, offset, count);
-        WriteThrottleManager.SleepForSize(writeThrottleManagerTransferId, count);
-
+        var chunkSize = GetChunkSize(WriteThrottleManager.Limit, count);
+        while (count > 0)
+        {
+            var bytesToWrite = Math.Min(chunkSize, count);
+            WriteThrottleManager.SleepForSize(writeThrottleManagerTransferId, bytesToWrite);
+            BaseStream.Write(buffer, offset, bytesToWrite);
+            offset += bytesToWrite;
+            count -= bytesToWrite;
+        }
     }
 
     /// <inheritdoc />
     public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
     {
-        int bytesRead = await BaseStream.ReadAsync(buffer, offset, count, cancellationToken);
+        var chunkSize = GetChunkSize(ReadThrottleManager.Limit, count);
+        var bytesToRead = Math.Min(chunkSize, count);
+        var bytesRead = await BaseStream.ReadAsync(buffer, offset, bytesToRead, cancellationToken);
         await ReadThrottleManager.WaitForSize(readThrottleManagerTransferId, bytesRead, cancellationToken);
         return bytesRead;
     }
@@ -104,8 +130,15 @@ public sealed class ThrottleEnabledStream : WrappingStream
     /// <inheritdoc />
     public override async Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
     {
-        await BaseStream.WriteAsync(buffer, offset, count, cancellationToken);
-        await WriteThrottleManager.WaitForSize(writeThrottleManagerTransferId, count, cancellationToken);
+        var chunkSize = GetChunkSize(WriteThrottleManager.Limit, count);
+        while (count > 0)
+        {
+            var bytesToWrite = Math.Min(chunkSize, count);
+            await WriteThrottleManager.WaitForSize(writeThrottleManagerTransferId, bytesToWrite, cancellationToken);
+            await BaseStream.WriteAsync(buffer, offset, bytesToWrite, cancellationToken);
+            offset += bytesToWrite;
+            count -= bytesToWrite;
+        }
     }
 
     /// <inheritdoc />
@@ -114,5 +147,13 @@ public sealed class ThrottleEnabledStream : WrappingStream
         ReadThrottleManager.UnregisterTransfer(readThrottleManagerTransferId);
         WriteThrottleManager.UnregisterTransfer(writeThrottleManagerTransferId);
         base.Dispose(disposing);
+    }
+
+    /// <inheritdoc />
+    public override async ValueTask DisposeAsync()
+    {
+        ReadThrottleManager.UnregisterTransfer(readThrottleManagerTransferId);
+        WriteThrottleManager.UnregisterTransfer(writeThrottleManagerTransferId);
+        await base.DisposeAsync();
     }
 }
