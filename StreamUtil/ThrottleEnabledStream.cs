@@ -136,6 +136,7 @@ public sealed class ThrottleEnabledStream : WrappingStream
             var bytesToWrite = Math.Min(chunkSize, count);
             await WriteThrottleManager.WaitForSize(writeThrottleManagerTransferId, bytesToWrite, cancellationToken);
             await BaseStream.WriteAsync(buffer, offset, bytesToWrite, cancellationToken);
+            await BaseStream.FlushAsync(cancellationToken);
             offset += bytesToWrite;
             count -= bytesToWrite;
         }
