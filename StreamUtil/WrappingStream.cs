@@ -38,6 +38,11 @@ public abstract class WrappingStream : Stream
     public bool DisposeBaseStream { get; set; }
 
     /// <summary>
+    /// Set while <see cref="DisposeAsync"/> runs the synchronous cleanup, so that the base stream is disposed asynchronously instead.
+    /// </summary>
+    private bool _disposingAsync;
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="WrappingStream"/> class.
     /// </summary>
     /// <param name="stream">The stream to wrap.</param>
@@ -84,25 +89,21 @@ public abstract class WrappingStream : Stream
     /// <inheritdoc/>
     protected override void Dispose(bool disposing)
     {
-        if (disposing && DisposeBaseStream)
+        if (disposing && DisposeBaseStream && !_disposingAsync)
             BaseStream.Dispose();
+
+        base.Dispose(disposing);
     }
 
     /// <inheritdoc/>
     public override async ValueTask DisposeAsync()
     {
+        // Run the cleanup of this stream, and of any derived stream, once
+        _disposingAsync = true;
+        Dispose();
+
         if (DisposeBaseStream)
             await BaseStream.DisposeAsync();
-
-        // Also dispose self if needed
-        await base.DisposeAsync();
-    }
-
-    /// <inheritdoc/>
-    public override void Close()
-    {
-        Dispose(true);
-        BaseStream.Close();
     }
 
     /// <inheritdoc/>
