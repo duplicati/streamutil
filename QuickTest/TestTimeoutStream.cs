@@ -60,7 +60,9 @@ public static class TestTimeoutStream
 
         var completingStream = new CompletingStream(wrappedStream, () => wrappedStream.CancelTimeout());
 
-        var uri = new Uri($"http://localhost:{Port}/");
+        // The sink listens on IPv4 only. "localhost" tries ::1 first, which takes about two seconds
+        // to be refused on Windows, and the read timeout already runs during that time.
+        var uri = new Uri($"http://127.0.0.1:{Port}/");
         var userInfo = new NetworkCredential("user", "pass");
 
         var httpClient = new HttpClient(new HttpClientHandler
