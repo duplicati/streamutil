@@ -78,9 +78,27 @@ public sealed class TimeoutObservingStream : WrappingAsyncStream
     public TimeoutObservingStream(Stream stream, bool disposeBaseStream)
         : base(stream, disposeBaseStream)
     {
-        _readTimer = new(_ => _timeoutCts.Cancel());
-        _writeTimer = new(_ => _timeoutCts.Cancel());
-        _startTimer = new(_ => _timeoutCts.Cancel());
+        _readTimer = new(OnTimeout);
+        _writeTimer = new(OnTimeout);
+        _startTimer = new(OnTimeout);
+    }
+
+    /// <summary>
+    /// Cancels the timeout token when a timer fires.
+    /// Timer.Dispose does not wait for a callback that has already started, so a callback
+    /// can run after Dispose has disposed the token source. The exception it would get is
+    /// ignored, as it would be thrown on a thread pool thread and end the process.
+    /// </summary>
+    /// <param name="state">The timer state, not used.</param>
+    private void OnTimeout(object? state)
+    {
+        try
+        {
+            _timeoutCts.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
     }
 
     /// <summary>
