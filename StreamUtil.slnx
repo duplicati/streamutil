@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="QuickTest/QuickTest.csproj" />
+  <Project Path="StreamUtil/StreamUtil.csproj" />
+  <Project Path="Tests/Tests.csproj" />
+</Solution>
