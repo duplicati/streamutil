@@ -10,16 +10,16 @@
 
   <PropertyGroup>
     <PackageId>Duplicati.StreamUtil</PackageId>
-    <Version>1.0.5</Version>
+    <Version>1.0.6</Version>
 
-    <Copyright>Copyright 2025, Duplicati Inc</Copyright>
+    <Copyright>Copyright 2026, Duplicati Inc</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/duplicati/streamutil</RepositoryUrl>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
     <PackageDescription>A C# library with stream helpers</PackageDescription>
     <Authors>Dupllicati Inc</Authors>
     <PackageTags>StreamWrapper StreamUtil TimeoutStream</PackageTags>
-    <PackageReleaseNotes>Fixed issue with dispose not being propagated. More smooth throttling.</PackageReleaseNotes>
+    <PackageReleaseNotes>Fixed issue with Close() calling the wrapped stream, hiding errors.</PackageReleaseNotes>
     <PackageReadmeFile>docs\README.md</PackageReadmeFile>    
   </PropertyGroup>
 
