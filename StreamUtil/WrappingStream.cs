@@ -81,28 +81,30 @@ public abstract class WrappingStream : Stream
     /// <inheritdoc/>
     public override void SetLength(long value) => BaseStream.SetLength(value);
 
+    /// <summary>
+    /// Set while <see cref="DisposeAsync"/> runs, so <see cref="Dispose(bool)"/> leaves the base stream to the asynchronous path
+    /// </summary>
+    private bool _disposingAsync;
+
     /// <inheritdoc/>
     protected override void Dispose(bool disposing)
     {
-        if (disposing && DisposeBaseStream)
+        if (disposing && DisposeBaseStream && !_disposingAsync)
             BaseStream.Dispose();
+
+        base.Dispose(disposing);
     }
 
     /// <inheritdoc/>
     public override async ValueTask DisposeAsync()
     {
+        // Run the cleanup of this stream and any subclass first, while the base stream is still open,
+        // and then dispose the base stream asynchronously, so it is only disposed once
+        _disposingAsync = true;
+        Dispose();
+
         if (DisposeBaseStream)
             await BaseStream.DisposeAsync();
-
-        // Also dispose self if needed
-        await base.DisposeAsync();
-    }
-
-    /// <inheritdoc/>
-    public override void Close()
-    {
-        Dispose(true);
-        BaseStream.Close();
     }
 
     /// <inheritdoc/>

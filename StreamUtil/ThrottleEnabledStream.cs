@@ -149,12 +149,4 @@ public sealed class ThrottleEnabledStream : WrappingStream
         WriteThrottleManager.UnregisterTransfer(writeThrottleManagerTransferId);
         base.Dispose(disposing);
     }
-
-    /// <inheritdoc />
-    public override async ValueTask DisposeAsync()
-    {
-        ReadThrottleManager.UnregisterTransfer(readThrottleManagerTransferId);
-        WriteThrottleManager.UnregisterTransfer(writeThrottleManagerTransferId);
-        await base.DisposeAsync();
-    }
 }
