@@ -10,7 +10,7 @@
 
   <PropertyGroup>
     <PackageId>Duplicati.StreamUtil</PackageId>
-    <Version>1.0.6</Version>
+    <Version>1.1.0</Version>
 
     <Copyright>Copyright 2026, Duplicati Inc</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
@@ -19,7 +19,7 @@
     <PackageDescription>A C# library with stream helpers</PackageDescription>
     <Authors>Dupllicati Inc</Authors>
     <PackageTags>StreamWrapper StreamUtil TimeoutStream</PackageTags>
-    <PackageReleaseNotes>Fixed issue with Close() calling the wrapped stream, hiding errors.</PackageReleaseNotes>
+    <PackageReleaseNotes>Added TimeoutMode to TimeoutObservingStream, selecting whether the time inside calls, between calls, or both counts against the timeout.</PackageReleaseNotes>
     <PackageReadmeFile>docs\README.md</PackageReadmeFile>    
   </PropertyGroup>
 
