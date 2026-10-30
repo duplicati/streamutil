@@ -1,22 +1,22 @@
 // Copyright (C) 2025, The Duplicati Team
 // https://duplicati.com, hello@duplicati.com
-// 
-// Permission is hereby granted, free of charge, to any person obtaining a 
-// copy of this software and associated documentation files (the "Software"), 
-// to deal in the Software without restriction, including without limitation 
-// the rights to use, copy, modify, merge, publish, distribute, sublicense, 
-// and/or sell copies of the Software, and to permit persons to whom the 
+//
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the "Software"),
+// to deal in the Software without restriction, including without limitation
+// the rights to use, copy, modify, merge, publish, distribute, sublicense,
+// and/or sell copies of the Software, and to permit persons to whom the
 // Software is furnished to do so, subject to the following conditions:
-// 
-// The above copyright notice and this permission notice shall be included in 
+//
+// The above copyright notice and this permission notice shall be included in
 // all copies or substantial portions of the Software.
-// 
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS 
-// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE 
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER 
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING 
-// FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+// FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
 namespace Duplicati.StreamUtil;
@@ -42,6 +42,11 @@ public sealed class TimeoutObservingStream : WrappingAsyncStream
     /// Once the first transfer happens (read or write), this timeout is ignored.
     /// </summary>
     private int _startTimeout = Timeout.Infinite;
+
+    /// <summary>
+    /// The time that counts against the timeouts.
+    /// </summary>
+    private TimeoutMode _mode = TimeoutMode.CallAndGap;
 
     /// <summary>
     /// The cancellation token source for the timeout.
@@ -91,6 +96,26 @@ public sealed class TimeoutObservingStream : WrappingAsyncStream
     /// <inheritdoc/>
     override public bool CanTimeout => true;
 
+    /// <summary>
+    /// The time that counts against <see cref="ReadTimeout"/> and <see cref="WriteTimeout"/>.
+    /// The default is <see cref="TimeoutMode.CallAndGap"/>.
+    /// </summary>
+    /// <remarks>
+    /// Set the mode before the timeouts, or while no read or write is in progress.
+    /// </remarks>
+    public TimeoutMode Mode
+    {
+        get => _mode;
+        set
+        {
+            if (!Enum.IsDefined(value))
+                throw new ArgumentOutOfRangeException(nameof(value));
+            _mode = value;
+            ArmBetweenCalls(_readTimer, _readTimeout);
+            ArmBetweenCalls(_writeTimer, _writeTimeout);
+        }
+    }
+
     /// <inheritdoc/>
     public override int ReadTimeout
     {
@@ -100,7 +125,7 @@ public sealed class TimeoutObservingStream : WrappingAsyncStream
             if (value <= 0 && value != Timeout.Infinite)
                 throw new ArgumentOutOfRangeException(nameof(value));
             _readTimeout = value;
-            _readTimer.Change(value, Timeout.Infinite);
+            ArmBetweenCalls(_readTimer, value);
         }
     }
 
@@ -113,7 +138,7 @@ public sealed class TimeoutObservingStream : WrappingAsyncStream
             if (value <= 0 && value != Timeout.Infinite)
                 throw new ArgumentOutOfRangeException(nameof(value));
             _writeTimeout = value;
-            _writeTimer.Change(value, Timeout.Infinite);
+            ArmBetweenCalls(_writeTimer, value);
         }
     }
 
@@ -146,29 +171,55 @@ public sealed class TimeoutObservingStream : WrappingAsyncStream
 
     private volatile bool _hasCompletedOperation;
 
-    /// <inheritdoc/>
-    protected override async Task<int> ReadImplAsync(byte[] buffer, int offset, int count,
-        CancellationToken cancellationToken)
+    /// <summary>
+    /// Sets a timer to the state it has while no call is in progress:
+    /// running in the modes that count the gaps between calls, stopped otherwise.
+    /// </summary>
+    /// <param name="timer">The timer to set.</param>
+    /// <param name="timeout">The timeout for the timer.</param>
+    private void ArmBetweenCalls(Timer timer, int timeout)
+        => timer.Change(_mode == TimeoutMode.Call ? Timeout.Infinite : timeout, Timeout.Infinite);
+
+    /// <summary>
+    /// Sets a timer to the state it has while a call is in progress:
+    /// restarted in the modes that count the time inside calls, stopped otherwise.
+    /// </summary>
+    /// <param name="timer">The timer to set.</param>
+    /// <param name="timeout">The timeout for the timer.</param>
+    private void ArmDuringCall(Timer timer, int timeout)
+        => timer.Change(_mode == TimeoutMode.Gap ? Timeout.Infinite : timeout, Timeout.Infinite);
+
+    /// <summary>
+    /// Runs a read or write on the base stream while observing its timeout, the start timeout and the cancellation token.
+    /// </summary>
+    /// <typeparam name="T">The result type of the operation.</typeparam>
+    /// <param name="timer">The timer for the operation.</param>
+    /// <param name="timeout">The timeout for the operation.</param>
+    /// <param name="operation">The operation to run on the base stream.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The result of the operation.</returns>
+    private async Task<T> ObserveAsync<T>(Timer timer, int timeout, Func<CancellationToken, Task<T>> operation, CancellationToken cancellationToken)
     {
+        // A timeout that has fired, during an earlier call or in the gap since it, is permanent
+        if (_timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+            throw new TimeoutException();
+
         try
         {
             // Start the grace period timer if this is the first operation and timeout is set
             if (!_hasCompletedOperation && _startTimeout != Timeout.Infinite)
                 _startTimer.Change(_startTimeout, Timeout.Infinite);
 
-            // If the read timer is enabled, restart it
-            if (_readTimeout != Timeout.Infinite) _readTimer.Change(_readTimeout, Timeout.Infinite);
+            ArmDuringCall(timer, timeout);
 
             // If there is no timeout and no cancellation token, we can just call the base stream
-            if (_readTimeout == Timeout.Infinite &&
-                _startTimeout == Timeout.Infinite &&
+            if (timeout == Timeout.Infinite &&
                 _startTimeout == Timeout.Infinite &&
                 !cancellationToken.CanBeCanceled)
             {
-                var readResult = await BaseStream.ReadAsync(buffer, offset, count, cancellationToken)
-                    .ConfigureAwait(false);
+                var directResult = await operation(cancellationToken).ConfigureAwait(false);
                 CancelStartTimeout();
-                return readResult;
+                return directResult;
             }
 
             // We need a cts here to handle cancellation when not handled by the callee
@@ -177,7 +228,7 @@ public sealed class TimeoutObservingStream : WrappingAsyncStream
                 : null;
 
             var tk = cts?.Token ?? _timeoutCts.Token;
-            var task = BaseStream.ReadAsync(buffer, offset, count, tk);
+            var task = operation(tk);
 
             // If the task is already completed, we can await it without a timeout
             if (task.IsCompleted)
@@ -203,63 +254,23 @@ public sealed class TimeoutObservingStream : WrappingAsyncStream
         {
             throw new TimeoutException();
         }
+        finally
+        {
+            ArmBetweenCalls(timer, timeout);
+        }
     }
 
     /// <inheritdoc/>
-    protected override async Task WriteImplAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
-    {
-        try
+    protected override Task<int> ReadImplAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+        => ObserveAsync(_readTimer, _readTimeout, ct => BaseStream.ReadAsync(buffer, offset, count, ct), cancellationToken);
+
+    /// <inheritdoc/>
+    protected override Task WriteImplAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+        => ObserveAsync(_writeTimer, _writeTimeout, async ct =>
         {
-            // Start the grace period timer if this is the first operation and timeout is set
-            if (!_hasCompletedOperation && _startTimeout != Timeout.Infinite) _startTimer.Change(_startTimeout, Timeout.Infinite);
-
-            // If the write timer is enabled, restart it
-            if (_writeTimeout != Timeout.Infinite) _writeTimer.Change(_writeTimeout, Timeout.Infinite);
-
-            // If there is no timeout and no cancellation token, we can just call the base stream
-            if (_writeTimeout == Timeout.Infinite &&
-                _startTimeout == Timeout.Infinite &&
-                _startTimeout == Timeout.Infinite &&
-                !cancellationToken.CanBeCanceled)
-            {
-                await BaseStream.WriteAsync(buffer, offset, count, cancellationToken)
-                    .ConfigureAwait(false);
-                CancelStartTimeout();
-                return;
-            }
-
-            // We need a cts here to handle cancellation when not handled by the callee
-            using var cts = cancellationToken.CanBeCanceled && cancellationToken != TimeoutToken
-                ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _timeoutCts.Token)
-                : null;
-
-            var tk = cts?.Token ?? _timeoutCts.Token;
-            var task = BaseStream.WriteAsync(buffer, offset, count, tk);
-
-            // If the task is already completed, we can await it without a timeout
-            if (task.IsCompleted)
-            {
-                await task.ConfigureAwait(false);
-                CancelStartTimeout();
-                return;
-            }
-
-            // Run the task and observe the cancellation token
-            var res = await Task.WhenAny(Task.Run(() => task, tk)).ConfigureAwait(false);
-
-            // Check if we should throw a timeout exception
-            if (!cancellationToken.IsCancellationRequested && _timeoutCts.IsCancellationRequested)
-                throw new TimeoutException();
-
-            // Any exceptions from the task are rethrown here
-            await res.ConfigureAwait(false);
-            CancelStartTimeout();
-        }
-        catch (OperationCanceledException)
-        {
-            throw new TimeoutException();
-        }
-    }
+            await BaseStream.WriteAsync(buffer, offset, count, ct).ConfigureAwait(false);
+            return 0;
+        }, cancellationToken);
 
     /// <inheritdoc/>
     protected override void Dispose(bool disposing)

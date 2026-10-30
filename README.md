@@ -14,6 +14,20 @@ This is problematic in situations where the expected transfer time is unknown, s
 
 The `ReadTimeout` and `WriteTimeout` can be set during use, but is only read when entering a read or write operation. In other words: setting timeout while a read/write operation is active will take effect on the next read/write call.
 
+### What the timeout measures
+
+A transfer has two sides: the wrapped stream, which answers each read or write, and the caller, which decides when the next read or write happens. Usually only one of them is the remote side whose silence should fail the transfer, and time spent waiting for the other side is normal flow control. The `Mode` property selects which time counts:
+
+| `TimeoutMode`          | Timer runs                                                            | Use when                                                                                                                       |
+| ---------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `CallAndGap` (default) | From the start of a call until the start of the next call             | The original behavior: no call may start more than the timeout after the previous one, however the time was spent              |
+| `Call`                 | Only while a read or write is in progress                             | The wrapped stream is the remote side, such as a network response stream, and the caller may pause between calls               |
+| `Gap`                  | Only between calls, and from setting the timeout until the first call | The stream is handed to a library that does the network transfer, and the wrapped stream is local or may block on flow control |
+
+For example, a process that reads from a remote source and writes to a slow destination will hold its reader back while the destination catches up. With `CallAndGap` that pause counts as a stalled source; with `Call` on the response stream, or `Gap` on a stream handed to the transfer library, it does not.
+
+Each timer covers one direction, so set only the timeout for the direction in use. A timeout is permanent: once it has fired, every later read or write fails with a `TimeoutException`.
+
 ## Throttle (aka rate-limit, aka bandwidth control)
 
 The [`ThrottleEnabledStream`](./StreamUtil/ThrottleEnabledStream.cs) allows the caller to throttle (aka rate-limit) the read and/or write speed by inserting small pauses, either with `Thread.Sleep()` or `await Task.Delay()` for `sync`/`async` respectively. A throttle value of zero will disable the throttle.
